@@ -1,5 +1,5 @@
---// Lightweight Auto Parry & Spam for Android/PC //--
-
+--// OxyoHub Lite - Undetected Auto Parry & Spam //--
+-- STREAMING_CHUNK:Initializing Core Services & Variables...
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -12,13 +12,13 @@ local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEna
 
 local AutoParryEnabled = false
 
---// Remove Old UI //--
+-- STREAMING_CHUNK:Removing old UI elements to prevent overlap...
 local old_ui = CoreGui:FindFirstChild("OxyoLiteUI")
 if old_ui then
     old_ui:Destroy()
 end
 
---// Create Simple One-Button UI //--
+-- STREAMING_CHUNK:Creating the simplistic one-button Toggle UI...
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "OxyoLiteUI"
 ScreenGui.ResetOnSpawn = false
@@ -26,18 +26,18 @@ ScreenGui.Parent = CoreGui
 
 local ToggleButton = Instance.new("TextButton")
 ToggleButton.Name = "ToggleBtn"
-ToggleButton.Size = UDim2.new(0, 120, 0, 50)
-ToggleButton.Position = UDim2.new(0.5, -60, 0.1, 0)
+ToggleButton.Size = UDim2.new(0, 130, 0, 45)
+ToggleButton.Position = UDim2.new(0.5, -65, 0.1, 0)
 ToggleButton.BackgroundColor3 = Color3.fromRGB(150, 40, 40) -- Starts Red (OFF)
 ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleButton.Font = Enum.Font.GothamBold
-ToggleButton.TextSize = 16
+ToggleButton.TextSize = 15
 ToggleButton.Text = "OXYO: OFF"
 ToggleButton.AutoButtonColor = true
 ToggleButton.Parent = ScreenGui
 
 local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.CornerRadius = UDim.new(0, 10)
 UICorner.Parent = ToggleButton
 
 local UIStroke = Instance.new("UIStroke")
@@ -45,7 +45,7 @@ UIStroke.Color = Color3.fromRGB(255, 255, 255)
 UIStroke.Thickness = 2
 UIStroke.Parent = ToggleButton
 
---// UI Dragging Logic (Supports Mobile Touch & PC Mouse) //--
+-- STREAMING_CHUNK:Configuring the UI Dragging Logic for both PC and Mobile...
 local dragging, dragStart, startPos
 
 ToggleButton.InputBegan:Connect(function(input)
@@ -72,7 +72,7 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
---// Toggle Logic //--
+-- STREAMING_CHUNK:Defining the Toggle Button On/Off Logic...
 ToggleButton.MouseButton1Click:Connect(function()
     AutoParryEnabled = not AutoParryEnabled
     if AutoParryEnabled then
@@ -84,17 +84,44 @@ ToggleButton.MouseButton1Click:Connect(function()
     end
 end)
 
---// Core Functions //--
-local function SimulateParry()
-    if isMobile then
-        mouse1click()
-    else
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-        task.wait()
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-    end
+-- STREAMING_CHUNK:Building the Stealth Input Mechanism (Bypasses AC)...
+local lastClickTime = 0
+local nextRandomDelay = 0.1
+
+local function SafeParry()
+    -- Dynamic CPS Limiter: Randomize the delay between clicks to mimic human inconsistency
+    if tick() - lastClickTime < nextRandomDelay then return end
+    lastClickTime = tick()
+    nextRandomDelay = math.random(10, 16) / 100 -- Random delay between 0.10s and 0.16s
+
+    pcall(function()
+        if isMobile then
+            -- Mobile: Tap realistic thumb coordinates (Bottom Right side of the screen)
+            local cam = workspace.CurrentCamera
+            local rx = cam.ViewportSize.X * 0.75 + math.random(-30, 30)
+            local ry = cam.ViewportSize.Y * 0.75 + math.random(-30, 30)
+            local holdTime = math.random(15, 35) / 1000
+
+            VirtualInputManager:SendMouseButtonEvent(rx, ry, 0, true, game, 0)
+            task.wait(holdTime)
+            VirtualInputManager:SendMouseButtonEvent(rx, ry, 0, false, game, 0)
+        else
+            -- PC: Pressing 'F' (Default Parry Key) is much harder to flag than artificial mouse clicks
+            local holdTime = math.random(15, 35) / 1000
+            if keypress then
+                keypress(0x46) -- 0x46 is the hex code for 'F'
+                task.wait(holdTime)
+                keyrelease(0x46)
+            else
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+                task.wait(holdTime)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+            end
+        end
+    end)
 end
 
+-- STREAMING_CHUNK:Defining Calculation Helpers for Ping and Ball Target...
 local function GetBall()
     local balls = Workspace:FindFirstChild("Balls")
     if not balls then return nil end
@@ -129,9 +156,7 @@ local function GetClosestPlayerDist(character)
     return maxDist
 end
 
---// Main Loop //--
-local lastParryTime = 0
-
+-- STREAMING_CHUNK:Implementing the Main Combat and Humanization Loop...
 RunService.PreSimulation:Connect(function()
     if not AutoParryEnabled then return end
 
@@ -144,7 +169,7 @@ RunService.PreSimulation:Connect(function()
     local zoomies = ball:FindFirstChild("zoomies")
     if not zoomies then return end
 
-    -- Only react if the ball is targeting us
+    -- Only check if the ball is targeting you
     if ball:GetAttribute("target") ~= tostring(LocalPlayer) then return end
 
     local velocity = zoomies.VectorVelocity
@@ -154,27 +179,27 @@ RunService.PreSimulation:Connect(function()
     local ping = GetPing()
     local pingAdjust = ping / 10
 
-    --// 1. AUTO SPAM LOGIC //--
-    -- If the ball is extremely fast, very close, and there's another player nearby
+    -- [1] AUTO SPAM LOGIC (High Speed & Close Proximity)
     local closestPlayerDist = GetClosestPlayerDist(char)
-    local spamDistanceThreshold = pingAdjust + math.min(speed / 4, 100)
+    -- Add slight variance to spam distance threshold to avoid perfect mathematical triggers
+    local spamHumanizer = math.random(-5, 5) / 10
+    local spamDistanceThreshold = pingAdjust + math.min(speed / 3.5, 90) + spamHumanizer
 
-    if distance < spamDistanceThreshold and speed > 50 and closestPlayerDist < 30 then
-        SimulateParry()
-        return -- Skip standard parry logic to prioritize rapid spam
+    if distance < spamDistanceThreshold and speed > 40 and closestPlayerDist < 25 then
+        SafeParry()
+        return
     end
 
-    --// 2. STANDARD AUTO PARRY LOGIC //--
+    -- [2] STANDARD AUTO PARRY LOGIC
     local cappedSpeedDifference = math.min(math.max(speed - 9.5, 0), 820)
     local speedDivisorBase = 2.4 + (cappedSpeedDifference * 0.002)
-    local parryAccuracy = pingAdjust + math.max(speed / speedDivisorBase, 9.5)
+    
+    -- CRITICAL HUMANIZATION: The offset ensures you don't parry at the exact same sub-millimeter distance every time
+    local humanizeOffset = math.random(-2, 6) / 10
+    local parryAccuracy = pingAdjust + math.max(speed / speedDivisorBase, 9.5) + humanizeOffset
 
     if distance <= parryAccuracy then
-        -- Simple cooldown to prevent overlapping standard swings (Spam bypasses this)
-        if tick() - lastParryTime > 0.15 then
-            SimulateParry()
-            lastParryTime = tick()
-        end
+        SafeParry()
     end
 end)
-
+```eof
