@@ -1,0 +1,213 @@
+--// OxyoHub Lite - Stealth ETA Auto Parry (Delta Android Optimized) //--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+
+local AutoParryEnabled = false
+
+--// Remove Old UI //--
+local old_ui = CoreGui:FindFirstChild("OxyoLiteUI")
+if old_ui then
+    old_ui:Destroy()
+end
+
+--// Create Simple One-Button UI //--
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "OxyoLiteUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleBtn"
+ToggleButton.Size = UDim2.new(0, 140, 0, 50)
+ToggleButton.Position = UDim2.new(0.5, -70, 0.1, 0)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+ToggleButton.TextColor3 = Color3.fromRGB(255, 80, 80) -- Starts Red (OFF)
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.TextSize = 16
+ToggleButton.Text = "OXYO: OFF"
+ToggleButton.AutoButtonColor = true
+ToggleButton.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = ToggleButton
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(255, 80, 80)
+UIStroke.Thickness = 2
+UIStroke.Parent = ToggleButton
+
+--// UI Dragging Logic //--
+local dragging, dragStart, startPos
+
+ToggleButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = ToggleButton.Position
+    end
+end)
+
+ToggleButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        ToggleButton.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+--// Toggle Logic //--
+ToggleButton.MouseButton1Click:Connect(function()
+    AutoParryEnabled = not AutoParryEnabled
+    if AutoParryEnabled then
+        ToggleButton.TextColor3 = Color3.fromRGB(80, 255, 80) -- Green
+        UIStroke.Color = Color3.fromRGB(80, 255, 80)
+        ToggleButton.Text = "OXYO: ON"
+    else
+        ToggleButton.TextColor3 = Color3.fromRGB(255, 80, 80) -- Red
+        UIStroke.Color = Color3.fromRGB(255, 80, 80)
+        ToggleButton.Text = "OXYO: OFF"
+    end
+end)
+
+--// Jittery Touch Emulation (Advanced AC Bypass) //--
+local lastClickTime = 0
+local nextRandomDelay = 0.1
+
+local function JitterTouchParry()
+    -- Dynamic CPS Limiter
+    if tick() - lastClickTime < nextRandomDelay then return end
+    lastClickTime = tick()
+    nextRandomDelay = math.random(11, 18) / 100 -- Random timeout between 0.11s and 0.18s
+
+    pcall(function()
+        local cam = workspace.CurrentCamera
+        -- Randomize touch target in the lower right quadrant
+        local rx = cam.ViewportSize.X * (math.random(65, 85) / 100)
+        local ry = cam.ViewportSize.Y * (math.random(65, 85) / 100)
+        local touchId = math.random(10000, 99999) -- Unique touch ID per tap
+
+        -- Attempt highly realistic native Android touch
+        local success = pcall(function()
+            -- State 0 = TouchBegan
+            VirtualInputManager:SendTouchEvent(touchId, 0, rx, ry)
+            task.wait(math.random(10, 20) / 1000)
+            
+            -- State 1 = TouchMoved (Simulate thumb rolling/jittering 1-3 pixels)
+            VirtualInputManager:SendTouchEvent(touchId, 1, rx + math.random(-3, 3), ry + math.random(-3, 3))
+            task.wait(math.random(10, 25) / 1000)
+            
+            -- State 2 = TouchEnded
+            VirtualInputManager:SendTouchEvent(touchId, 2, rx, ry)
+        end)
+
+        -- Fallback if executor strictly rejects SendTouchEvent
+        if not success then
+            VirtualInputManager:SendMouseButtonEvent(rx, ry, 0, true, game, 0)
+            task.wait(math.random(20, 45) / 1000)
+            VirtualInputManager:SendMouseButtonEvent(rx + math.random(-2, 2), ry + math.random(-2, 2), 0, false, game, 0)
+        end
+    end)
+end
+
+--// Calculation Helpers //--
+local function GetBall()
+    local balls = Workspace:FindFirstChild("Balls")
+    if not balls then return nil end
+    for _, ball in pairs(balls:GetChildren()) do
+        if ball:GetAttribute("realBall") then
+            return ball
+        end
+    end
+    return nil
+end
+
+local function GetPing()
+    local success, ping = pcall(function()
+        return game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue()
+    end)
+    return success and ping or 50
+end
+
+local function GetClosestPlayerDist(character)
+    local maxDist = math.huge
+    local aliveFolder = Workspace:FindFirstChild("Alive")
+    if not aliveFolder then return maxDist end
+
+    for _, entity in pairs(aliveFolder:GetChildren()) do
+        if entity ~= character and entity.PrimaryPart then
+            local dist = (character.PrimaryPart.Position - entity.PrimaryPart.Position).Magnitude
+            if dist < maxDist then
+                maxDist = dist
+            end
+        end
+    end
+    return maxDist
+end
+
+--// Time-To-Impact (ETA) Combat Loop //--
+RunService.PreSimulation:Connect(function()
+    if not AutoParryEnabled then return end
+
+    local char = LocalPlayer.Character
+    if not char or not char.PrimaryPart then return end
+
+    local ball = GetBall()
+    if not ball then return end
+
+    local zoomies = ball:FindFirstChild("zoomies")
+    if not zoomies then return end
+
+    -- Only react if the ball is strictly targeting us
+    if ball:GetAttribute("target") ~= tostring(LocalPlayer) then return end
+
+    local velocity = zoomies.VectorVelocity
+    local speed = velocity.Magnitude
+    if speed < 1 then return end -- Prevent division by zero
+
+    -- Calculate exact distance and ETA (Estimated Time of Arrival)
+    local distance = (char.PrimaryPart.Position - ball.Position).Magnitude
+    local timeToImpact = distance / speed
+    
+    local ping = GetPing()
+    local pingInSeconds = ping / 1000
+
+    -- [1] AUTO SPAM LOGIC (Priority)
+    local closestPlayerDist = GetClosestPlayerDist(char)
+    -- If ball is bouncing extremely fast between close players, react instantly
+    if speed > 40 and closestPlayerDist < 25 and timeToImpact < (pingInSeconds + 0.15) then
+        JitterTouchParry()
+        return
+    end
+
+    -- [2] STANDARD PARRY LOGIC (ETA Based)
+    -- Human reaction window is roughly 0.12s to 0.18s before impact. 
+    -- We dynamically randomize this window every frame to avoid machine-perfect consistency.
+    local humanReactionWindow = math.random(120, 180) / 1000 
+    local parryTriggerTime = pingInSeconds + humanReactionWindow
+
+    -- Adjust for severe lag to avoid missing the window
+    if ping > 150 then
+        parryTriggerTime = parryTriggerTime + 0.05
+    end
+
+    -- If the ball will hit us within our humanized reaction window, Parry!
+    if timeToImpact <= parryTriggerTime then
+        JitterTouchParry()
+    end
+end)
